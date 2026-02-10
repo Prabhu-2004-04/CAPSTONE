@@ -1,0 +1,4 @@
+- [x] Update index.html to remove Loveable branding (change title, meta tags, og/twitter references)
+- [x] Update README.md to replace with basic project description
+- [x] Remove componentTagger plugin from vite.config.ts
+- [x] Delete branded favicon.ico

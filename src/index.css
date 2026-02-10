@@ -1,0 +1,240 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Source+Sans+3:wght@300;400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    /* Alliance University inspired palette - Navy & Gold */
+    --background: 45 25% 97%;
+    --foreground: 220 50% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 50% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 50% 15%;
+
+    /* Deep Navy Blue - from Alliance logo */
+    --primary: 220 60% 22%;
+    --primary-foreground: 45 30% 95%;
+
+    /* Cream/Beige secondary */
+    --secondary: 45 20% 92%;
+    --secondary-foreground: 220 50% 20%;
+
+    --muted: 45 15% 90%;
+    --muted-foreground: 220 20% 45%;
+
+    /* Gold accent */
+    --accent: 38 85% 50%;
+    --accent-foreground: 220 60% 15%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 20% 88%;
+    --input: 220 20% 88%;
+    --ring: 38 85% 50%;
+
+    --radius: 0.5rem;
+
+    /* Custom tokens */
+    --navy: 220 60% 22%;
+    --navy-light: 220 45% 35%;
+    --navy-dark: 220 65% 12%;
+    --gold: 38 85% 50%;
+    --gold-light: 38 70% 65%;
+    --gold-dark: 38 90% 40%;
+    --cream: 45 25% 97%;
+    --cream-dark: 45 20% 90%;
+    
+    /* Gradients */
+    --gradient-hero: linear-gradient(135deg, hsl(220 60% 22% / 0.9), hsl(220 65% 12% / 0.95));
+    --gradient-gold: linear-gradient(135deg, hsl(38 85% 50%), hsl(38 90% 40%));
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%), hsl(45 25% 97%));
+    
+    /* Shadows */
+    --shadow-soft: 0 4px 20px -4px hsl(220 60% 22% / 0.1);
+    --shadow-card: 0 10px 40px -10px hsl(220 60% 22% / 0.15);
+    --shadow-elevated: 0 20px 60px -15px hsl(220 60% 22% / 0.2);
+    --shadow-gold: 0 8px 30px -8px hsl(38 85% 50% / 0.4);
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 220 50% 8%;
+    --foreground: 45 25% 95%;
+
+    --card: 220 45% 12%;
+    --card-foreground: 45 25% 95%;
+
+    --popover: 220 45% 12%;
+    --popover-foreground: 45 25% 95%;
+
+    --primary: 38 85% 55%;
+    --primary-foreground: 220 60% 10%;
+
+    --secondary: 220 40% 18%;
+    --secondary-foreground: 45 25% 90%;
+
+    --muted: 220 35% 20%;
+    --muted-foreground: 220 15% 60%;
+
+    --accent: 38 85% 55%;
+    --accent-foreground: 220 60% 10%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 30% 22%;
+    --input: 220 30% 22%;
+    --ring: 38 85% 55%;
+
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Source Sans 3', system-ui, sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Playfair Display', serif;
+    @apply font-semibold tracking-tight;
+  }
+}
+
+@layer components {
+  .btn-gold {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-md font-medium transition-all duration-300;
+    background: var(--gradient-gold);
+    color: hsl(var(--navy-dark));
+    box-shadow: var(--shadow-gold);
+  }
+  
+  .btn-gold:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px -8px hsl(38 85% 50% / 0.5);
+  }
+
+  .btn-outline-light {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-md font-medium transition-all duration-300;
+    border: 2px solid hsl(var(--gold));
+    color: hsl(var(--cream));
+  }
+  
+  .btn-outline-light:hover {
+    background: hsl(var(--gold) / 0.1);
+  }
+
+  .card-elevated {
+    @apply bg-card rounded-xl p-6 transition-all duration-300;
+    box-shadow: var(--shadow-card);
+  }
+  
+  .card-elevated:hover {
+    box-shadow: var(--shadow-elevated);
+    transform: translateY(-4px);
+  }
+
+  .stat-card {
+    @apply relative overflow-hidden bg-card rounded-xl p-8 text-center;
+    box-shadow: var(--shadow-soft);
+  }
+  
+  .stat-card::before {
+    content: '';
+    @apply absolute top-0 left-0 w-full h-1;
+    background: var(--gradient-gold);
+  }
+
+  .section-heading {
+    @apply text-3xl md:text-4xl font-semibold mb-4;
+    color: hsl(var(--navy));
+  }
+
+  .gold-text {
+    background: var(--gradient-gold);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .nav-link {
+    @apply relative px-4 py-2 text-sm font-medium transition-colors duration-200;
+    color: hsl(var(--cream) / 0.8);
+  }
+  
+  .nav-link:hover {
+    color: hsl(var(--cream));
+  }
+  
+  .nav-link.active {
+    color: hsl(var(--gold));
+  }
+  
+  .nav-link.active::after {
+    content: '';
+    @apply absolute bottom-0 left-4 right-4 h-0.5;
+    background: var(--gradient-gold);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .animate-fade-up {
+    animation: fadeUp 0.6s ease-out forwards;
+  }
+  
+  @keyframes fadeUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .animate-scale-in {
+    animation: scaleIn 0.5s ease-out forwards;
+  }
+  
+  @keyframes scaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}
