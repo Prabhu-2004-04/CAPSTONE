@@ -36,7 +36,7 @@ interface DashboardLayoutProps {
 }
 
 const DashboardLayout = ({ children, activeItem }: DashboardLayoutProps) => {
-  const { role, user, signOut } = useAuth();
+  const { role, user, fullName, signOut } = useAuth();
   const navigate = useNavigate();
   const menuItems = role === 'teacher' ? teacherMenuItems : studentMenuItems;
 
@@ -86,7 +86,7 @@ const DashboardLayout = ({ children, activeItem }: DashboardLayoutProps) => {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-serif font-bold text-foreground">
-              Welcome back, {user?.user_metadata?.full_name || 'User'}
+              Welcome back, {fullName || user?.user_metadata?.full_name || 'User'}
             </h1>
             <p className="text-muted-foreground">
               {role === 'teacher' ? 'Faculty Dashboard' : 'Student Dashboard'} • Academic Year 2024-25

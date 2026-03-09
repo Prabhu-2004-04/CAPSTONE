@@ -71,6 +71,99 @@ export type Database = {
         }
         Relationships: []
       }
+      assignments: {
+        Row: {
+          id: string
+          course_code: string
+          course_name: string
+          title: string
+          type: Database["public"]["Enums"]["assignment_type"]
+          issue_date: string
+          due_date: string
+          marks_allotted: number
+          visibility: string
+          faculty_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          course_code: string
+          course_name: string
+          title: string
+          type?: Database["public"]["Enums"]["assignment_type"]
+          issue_date?: string
+          due_date: string
+          marks_allotted?: number
+          visibility?: string
+          faculty_id?: string | null
+        }
+        Update: {
+          id?: string
+          course_code?: string
+          course_name?: string
+          title?: string
+          type?: Database["public"]["Enums"]["assignment_type"]
+          issue_date?: string
+          due_date?: string
+          marks_allotted?: number
+          visibility?: string
+          faculty_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      submissions: {
+        Row: {
+          id: string
+          assignment_id: string
+          student_id: string
+          file_url: string
+          note: string | null
+          status: Database["public"]["Enums"]["assignment_submission_status"]
+          submitted_at: string
+          marks_obtained: number | null
+          grade: string | null
+          plagiarism_percent: number | null
+          evaluation_status: Database["public"]["Enums"]["evaluation_status"]
+          feedback: string | null
+          resubmission_count: number
+        }
+        Insert: {
+          id?: string
+          assignment_id: string
+          student_id: string
+          file_url: string
+          note?: string | null
+          status?: Database["public"]["Enums"]["assignment_submission_status"]
+          submitted_at?: string
+          marks_obtained?: number | null
+          grade?: string | null
+          plagiarism_percent?: number | null
+          evaluation_status?: Database["public"]["Enums"]["evaluation_status"]
+          feedback?: string | null
+          resubmission_count?: number
+        }
+        Update: {
+          id?: string
+          assignment_id?: string
+          student_id?: string
+          file_url?: string
+          note?: string | null
+          status?: Database["public"]["Enums"]["assignment_submission_status"]
+          submitted_at?: string
+          marks_obtained?: number | null
+          grade?: string | null
+          plagiarism_percent?: number | null
+          evaluation_status?: Database["public"]["Enums"]["evaluation_status"]
+          feedback?: string | null
+          resubmission_count?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -90,6 +183,9 @@ export type Database = {
     }
     Enums: {
       app_role: "student" | "teacher" | "admin"
+      assignment_type: "Theory" | "Practical" | "Project"
+      assignment_submission_status: "Submitted" | "Not Submitted" | "Late"
+      evaluation_status: "Pending" | "Evaluated"
     }
     CompositeTypes: {
       [_ in never]: never

@@ -94,18 +94,26 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
   user_role app_role;
+  user_full_name TEXT;
 BEGIN
   -- Get role from metadata, default to 'student'
   user_role := COALESCE(
-    (NEW.raw_user_meta_data->>'role')::app_role,
+    (NEW.user_metadata->>'role')::app_role,
     'student'::app_role
+  );
+  
+  -- Get full name from metadata (supports both 'full_name' and 'name' for different providers)
+  user_full_name := COALESCE(
+    NEW.user_metadata->>'full_name',
+    NEW.user_metadata->>'name',
+    ''
   );
   
   -- Insert profile
   INSERT INTO public.profiles (user_id, full_name, email)
   VALUES (
     NEW.id,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
+    user_full_name,
     NEW.email
   );
   
@@ -121,3 +129,104 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 CREATE OR REPLACE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- ============================================================
+-- Assignment and Submission Tables
+-- ============================================================
+
+-- assignment type enum
+CREATE TYPE public.assignment_type AS ENUM ('Theory', 'Practical', 'Project');
+
+-- submission status enum
+CREATE TYPE public.assignment_submission_status AS ENUM ('Submitted', 'Not Submitted', 'Late');
+
+-- evaluation status enum
+CREATE TYPE public.evaluation_status AS ENUM ('Pending', 'Evaluated');
+
+-- assignments table
+CREATE TABLE public.assignments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    course_code TEXT NOT NULL,
+    course_name TEXT NOT NULL,
+    title TEXT NOT NULL,
+    type public.assignment_type NOT NULL DEFAULT 'Theory',
+    issue_date DATE NOT NULL DEFAULT now(),
+    due_date DATE NOT NULL,
+    marks_allotted INTEGER NOT NULL DEFAULT 0,
+    visibility TEXT NOT NULL DEFAULT 'Draft',
+    faculty_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+-- submissions table (students submit assignments)
+CREATE TABLE public.submissions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    assignment_id UUID REFERENCES public.assignments(id) ON DELETE CASCADE NOT NULL,
+    student_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    file_url TEXT NOT NULL,
+    note TEXT,
+    status public.assignment_submission_status NOT NULL DEFAULT 'Submitted',
+    submitted_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    marks_obtained INTEGER,
+    grade TEXT,
+    plagiarism_percent NUMERIC,
+    evaluation_status public.evaluation_status NOT NULL DEFAULT 'Pending',
+    feedback TEXT,
+    resubmission_count INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+-- Create trigger for assignments updated_at
+CREATE TRIGGER update_assignments_updated_at
+BEFORE UPDATE ON public.assignments
+FOR EACH ROW
+EXECUTE FUNCTION public.update_updated_at_column();
+
+-- Create trigger for submissions updated_at
+CREATE TRIGGER update_submissions_updated_at
+BEFORE UPDATE ON public.submissions
+FOR EACH ROW
+EXECUTE FUNCTION public.update_updated_at_column();
+
+-- Enable row level security on new tables
+ALTER TABLE public.assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.submissions ENABLE ROW LEVEL SECURITY;
+
+-- assignment policies
+CREATE POLICY "Teachers can manage their own assignments" 
+ON public.assignments FOR ALL
+USING (auth.uid() = faculty_id)
+WITH CHECK (auth.uid() = faculty_id);
+
+CREATE POLICY "Public can view published assignments" 
+ON public.assignments FOR SELECT
+USING (visibility = 'Published');
+
+-- submissions policies
+CREATE POLICY "Students can insert their own submissions"
+ON public.submissions FOR INSERT
+WITH CHECK (auth.uid() = student_id);
+
+CREATE POLICY "Students can view their own submissions"
+ON public.submissions FOR SELECT
+USING (auth.uid() = student_id);
+
+CREATE POLICY "Teachers can view submissions for their assignments"
+ON public.submissions FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM public.assignments a
+    WHERE a.id = assignment_id AND a.faculty_id = auth.uid()
+  )
+);
+
+CREATE POLICY "Teachers can update submissions for their assignments"
+ON public.submissions FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM public.assignments a
+    WHERE a.id = assignment_id AND a.faculty_id = auth.uid()
+  )
+);

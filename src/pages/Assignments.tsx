@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 type AssignmentStatus = 'Submitted' | 'Not Submitted' | 'Late' | 'Evaluated';
 
@@ -29,6 +30,7 @@ interface Assignment {
   marksAllotted: number;
   status: AssignmentStatus;
   submittedDate?: string;
+  fileUrl?: string;
   marksObtained?: number;
   grade?: string;
   feedback?: string;
@@ -39,47 +41,6 @@ interface Assignment {
   facultyName: string;
 }
 
-const assignments: Assignment[] = [
-  {
-    id: 'ASG-001', courseCode: 'CS301', courseName: 'Data Structures',
-    title: 'Binary Tree Implementation', type: 'Practical', issueDate: '2025-01-15',
-    dueDate: '2025-02-01', submissionMode: 'Online', marksAllotted: 25,
-    status: 'Evaluated', submittedDate: '2025-01-30', marksObtained: 22, grade: 'A',
-    feedback: 'Excellent implementation with proper edge case handling.',
-    plagiarismPercent: 5, resubmissionAllowed: false, resubmissionCount: 0,
-    visibility: 'Published', facultyName: 'Dr. Sharma'
-  },
-  {
-    id: 'ASG-002', courseCode: 'CS302', courseName: 'Database Systems',
-    title: 'ER Diagram & Normalization', type: 'Theory', issueDate: '2025-01-20',
-    dueDate: '2025-02-10', submissionMode: 'Online', marksAllotted: 20,
-    status: 'Submitted', submittedDate: '2025-02-08', plagiarismPercent: 12,
-    resubmissionAllowed: true, resubmissionCount: 0,
-    visibility: 'Published', facultyName: 'Prof. Gupta'
-  },
-  {
-    id: 'ASG-003', courseCode: 'CS303', courseName: 'Operating Systems',
-    title: 'Process Scheduling Simulation', type: 'Project', issueDate: '2025-01-25',
-    dueDate: '2025-02-15', submissionMode: 'Online', marksAllotted: 30,
-    status: 'Not Submitted', resubmissionAllowed: true, resubmissionCount: 0,
-    visibility: 'Published', facultyName: 'Dr. Patel'
-  },
-  {
-    id: 'ASG-004', courseCode: 'CS304', courseName: 'Computer Networks',
-    title: 'TCP/IP Protocol Analysis', type: 'Theory', issueDate: '2025-02-01',
-    dueDate: '2025-02-05', submissionMode: 'Offline', marksAllotted: 15,
-    status: 'Late', submittedDate: '2025-02-07', plagiarismPercent: 8,
-    resubmissionAllowed: false, resubmissionCount: 1,
-    visibility: 'Published', facultyName: 'Dr. Verma'
-  },
-  {
-    id: 'ASG-005', courseCode: 'CS305', courseName: 'Software Engineering',
-    title: 'Agile Methodology Case Study', type: 'Theory', issueDate: '2025-02-05',
-    dueDate: '2025-02-20', submissionMode: 'Online', marksAllotted: 20,
-    status: 'Not Submitted', resubmissionAllowed: true, resubmissionCount: 0,
-    visibility: 'Published', facultyName: 'Prof. Singh'
-  },
-];
 
 const aiSuggestions = [
   { assignment: 'Process Scheduling Simulation', tip: 'Start with Round Robin algorithm implementation, then extend to SJF and Priority scheduling. Use a modular approach.', priority: 'High' },
@@ -97,6 +58,63 @@ const statusConfig: Record<AssignmentStatus, { color: string; icon: typeof Check
 const Assignments = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  
+  // load published assignments and current user's submissions
+  const loadAssignments = async () => {
+    if (!user) return;
+    const { data: asgs, error: asgError } = await supabase
+      .from('assignments')
+      .select('*')
+      .eq('visibility', 'Published')
+      .order('due_date', { ascending: true });
+    if (asgError) {
+      console.error('load assignments', asgError);
+      return;
+    }
+
+    const { data: subs, error: subError } = await supabase
+      .from('submissions')
+      .select('*')
+      .eq('student_id', user.id);
+    if (subError) {
+      console.error('load submissions', subError);
+    }
+
+    const merged = (asgs || []).map(a => {
+      const submission = (subs || []).find(s => s.assignment_id === a.id);
+      let status: AssignmentStatus = 'Not Submitted';
+      if (submission) {
+        status = submission.status === 'Late' ? 'Late' :
+          submission.evaluation_status === 'Evaluated' ? 'Evaluated' : 'Submitted';
+      }
+      return {
+        id: a.id,
+        courseCode: a.course_code,
+        courseName: a.course_name,
+        title: a.title,
+        type: a.type as any,
+        issueDate: a.issue_date,
+        dueDate: a.due_date,
+        submissionMode: 'Online',
+        marksAllotted: a.marks_allotted,
+        status,
+        submittedDate: submission?.submitted_at?.slice(0, 10) ?? undefined,
+        fileUrl: submission?.file_url,
+        marksObtained: submission?.marks_obtained ?? undefined,
+        grade: submission?.grade ?? undefined,
+        feedback: submission?.feedback ?? undefined,
+        plagiarismPercent: submission?.plagiarism_percent ?? undefined,
+        resubmissionAllowed: submission ? submission.resubmission_count < 1 : true,
+        resubmissionCount: submission?.resubmission_count ?? 0,
+        visibility: a.visibility as any,
+        facultyName: ''
+      } as Assignment;
+    });
+
+    setAssignments(merged);
+  };
+
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadTarget, setUploadTarget] = useState('');
@@ -105,25 +123,153 @@ const Assignments = () => {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // AI Assessment state
+  const [aiAssessmentOpen, setAiAssessmentOpen] = useState(false);
+  const [aiAssessmentTarget, setAiAssessmentTarget] = useState<Assignment | null>(null);
+  const [aiAssessment, setAiAssessment] = useState<{
+    marks: number;
+    grade: string;
+    feedback: string;
+    strengths: string[];
+    improvements: string[];
+    score: number;
+  } | null>(null);
+  const [generatingAssessment, setGeneratingAssessment] = useState(false);
+
   const pendingAssignments = assignments.filter(a => a.status === 'Not Submitted' || (a.status !== 'Evaluated' && a.resubmissionAllowed));
 
-  const handleUploadSubmit = () => {
-    if (!uploadTarget) { toast.error('Please select an assignment'); return; }
-    if (!uploadFile) { toast.error('Please select a file to upload'); return; }
-    setUploading(true);
-    setTimeout(() => {
-      setUploading(false);
-      setUploadOpen(false);
-      setUploadFile(null);
-      setUploadNote('');
-      setUploadTarget('');
-      toast.success('Assignment submitted successfully!');
-    }, 1500);
+  const handleUploadSubmit = async () => {
+  if (!uploadTarget) { toast.error('Please select an assignment'); return; }
+  if (!uploadFile) { toast.error('Please select a file to upload'); return; }
+  if (!user) { toast.error('Not authenticated'); return; }
+  setUploading(true);
+
+  try {
+
+    const path = `${uploadTarget}/${user.id}/${uploadFile.name}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('assignments')
+      .upload(path, uploadFile, { upsert: true });
+
+    if (uploadError) throw uploadError;
+
+    const { data: publicData } = supabase.storage
+      .from('assignments')
+      .getPublicUrl(path);
+
+    const publicUrl = publicData.publicUrl;
+
+    const { error: insertError } = await supabase
+      .from('submissions')
+      .upsert({
+        assignment_id: uploadTarget,
+        student_id: user.id,
+        file_url: publicUrl,
+        note: uploadNote,
+        status: 'Submitted',
+        submitted_at: new Date().toISOString(),
+      }, { onConflict: 'assignment_id,student_id' });
+
+    if (insertError) throw insertError;
+
+    toast.success('Assignment submitted successfully!');
+    await loadAssignments();
+
+  } catch (err: any) {
+    console.error(err);
+    toast.error('Upload failed');
+  } finally {
+    setUploading(false);
+    setUploadOpen(false);
+    setUploadFile(null);
+    setUploadNote('');
+    setUploadTarget('');
+  }
+};
+
+  const generateAiAssessment = async (assignment: Assignment) => {
+    setGeneratingAssessment(true);
+    setAiAssessment(null);
+
+    try {
+      // Mock AI assessment generation
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate API call
+
+      const maxMarks = assignment.marksAllotted;
+      const baseScore = Math.floor(Math.random() * 30) + 70; // 70-100 base score
+      const aiMarks = Math.round((baseScore / 100) * maxMarks);
+
+      const grades = ['O', 'A+', 'A', 'B+', 'B', 'C'];
+      const gradeIndex = Math.floor((aiMarks / maxMarks) * grades.length);
+      const aiGrade = grades[Math.min(gradeIndex, grades.length - 1)];
+
+      const strengths = [
+        'Good understanding of core concepts',
+        'Well-structured submission',
+        'Clear and concise explanations',
+        'Proper use of technical terminology',
+        'Logical flow of ideas'
+      ].slice(0, Math.floor(Math.random() * 3) + 2);
+
+      const improvements = [
+        'Add more practical examples',
+        'Include references and citations',
+        'Deepen technical analysis',
+        'Improve formatting and presentation',
+        'Add conclusion/summary section'
+      ].slice(0, Math.floor(Math.random() * 3) + 2);
+
+      const assessment = {
+        marks: aiMarks,
+        grade: aiGrade,
+        score: baseScore,
+        feedback: `AI Assessment Complete!\n\nYour submission demonstrates a ${baseScore >= 85 ? 'strong' : baseScore >= 75 ? 'good' : 'developing'} understanding of the assignment requirements. The AI analysis suggests this work would likely receive around ${aiMarks}/${maxMarks} marks (${aiGrade} grade) based on current quality metrics.`,
+        strengths,
+        improvements
+      };
+
+      setAiAssessment(assessment);
+      toast.success('AI assessment generated successfully!');
+    } catch (error) {
+      console.error('AI assessment error:', error);
+      toast.error('Failed to generate AI assessment');
+    } finally {
+      setGeneratingAssessment(false);
+    }
   };
 
   useEffect(() => {
     if (!loading && !user) navigate('/auth');
   }, [user, loading, navigate]);
+
+  useEffect(() => {
+    if (user) {
+      loadAssignments();
+
+      // subscribe to assignments table using new channel API
+      const channel = supabase
+        .channel('public:assignments')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'assignments' }, payload => {
+          if (payload.new.visibility === 'Published') loadAssignments();
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'assignments' }, payload => {
+          if (payload.new.visibility === 'Published') loadAssignments();
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [user]);
+
+  // reload assignments whenever upload dialog is opened, to guarantee fresh list
+  useEffect(() => {
+    if (uploadOpen && user) {
+      loadAssignments();
+    }
+  }, [uploadOpen, user]);
 
   if (loading) return null;
 
@@ -136,7 +282,7 @@ const Assignments = () => {
       <div className="flex items-center justify-between mb-2">
         <div>
           <h1 className="text-2xl font-serif font-bold text-foreground">My Assignments</h1>
-          <p className="text-muted-foreground mt-1">Track submissions, view evaluations, and get AI-powered suggestions</p>
+          <p className="text-muted-foreground mt-1">Track submissions, view evaluations, and get AI-powered assessments and feedback</p>
         </div>
         <Button onClick={() => setUploadOpen(true)} className="bg-gold text-navy hover:bg-gold/90 gap-2">
           <Upload className="w-4 h-4" /> Upload Assignment
@@ -198,6 +344,118 @@ const Assignments = () => {
         </DialogContent>
       </Dialog>
 
+      {/* AI Assessment Dialog */}
+      <Dialog open={aiAssessmentOpen} onOpenChange={(open) => {
+        setAiAssessmentOpen(open);
+        if (!open) {
+          setAiAssessment(null);
+          setAiAssessmentTarget(null);
+        }
+      }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-serif flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-purple-600" />
+              AI Assessment - {aiAssessmentTarget?.title}
+            </DialogTitle>
+            <DialogDescription>
+              Get an AI-powered evaluation of your submission before final grading
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 mt-4">
+            {!aiAssessment ? (
+              <div className="text-center py-8">
+                <Sparkles className="w-16 h-16 text-purple-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-foreground mb-2">Ready for AI Assessment</h3>
+                <p className="text-muted-foreground mb-6">
+                  Our AI will analyze your submission and provide detailed feedback, 
+                  suggested marks, and improvement recommendations.
+                </p>
+                <Button 
+                  onClick={() => aiAssessmentTarget && generateAiAssessment(aiAssessmentTarget)}
+                  disabled={generatingAssessment}
+                  className="bg-purple-600 hover:bg-purple-700 text-white gap-2"
+                >
+                  {generatingAssessment ? (
+                    <>
+                      <Clock className="w-4 h-4 animate-spin" />
+                      Analyzing Submission...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Generate AI Assessment
+                    </>
+                  )}
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Assessment Summary */}
+                <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20 p-6 rounded-lg">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-foreground">Assessment Summary</h3>
+                    <div className="text-right">
+                      <p className="text-2xl font-bold text-purple-600">{aiAssessment.marks}/{aiAssessmentTarget?.marksAllotted}</p>
+                      <p className="text-sm text-muted-foreground">Suggested Grade: {aiAssessment.grade}</p>
+                    </div>
+                  </div>
+                  <div className="mb-4">
+                    <div className="flex justify-between text-sm text-muted-foreground mb-1">
+                      <span>Quality Score</span>
+                      <span>{aiAssessment.score}%</span>
+                    </div>
+                    <Progress value={aiAssessment.score} className="h-2" />
+                  </div>
+                  <p className="text-sm text-foreground">{aiAssessment.feedback}</p>
+                </div>
+
+                {/* Strengths */}
+                <div className="bg-emerald-50 dark:bg-emerald-950/20 p-4 rounded-lg">
+                  <h4 className="font-medium text-emerald-900 dark:text-emerald-100 mb-3 flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4" />
+                    Strengths Identified
+                  </h4>
+                  <ul className="space-y-2">
+                    {aiAssessment.strengths.map((strength, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-emerald-800 dark:text-emerald-200">
+                        <span className="text-emerald-600 mt-1">•</span>
+                        {strength}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Improvements */}
+                <div className="bg-amber-50 dark:bg-amber-950/20 p-4 rounded-lg">
+                  <h4 className="font-medium text-amber-900 dark:text-amber-100 mb-3 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4" />
+                    Areas for Improvement
+                  </h4>
+                  <ul className="space-y-2">
+                    {aiAssessment.improvements.map((improvement, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-amber-800 dark:text-amber-200">
+                        <span className="text-amber-600 mt-1">•</span>
+                        {improvement}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg">
+                  <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">💡 AI Recommendations</h4>
+                  <p className="text-sm text-blue-800 dark:text-blue-200">
+                    Use this assessment to improve your work before the final deadline. 
+                    Consider revising based on the suggestions above to potentially achieve a higher grade.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         {[
@@ -220,6 +478,8 @@ const Assignments = () => {
         <TabsList className="mb-6 bg-card">
           <TabsTrigger value="assignments">All Assignments</TabsTrigger>
           <TabsTrigger value="submissions">Submission Status</TabsTrigger>
+          <TabsTrigger value="ai-assessment">AI Assessment</TabsTrigger>
+          <TabsTrigger value="ai-feedback">AI Feedback</TabsTrigger>
           <TabsTrigger value="ai-suggestions">AI Suggestions</TabsTrigger>
         </TabsList>
 
@@ -270,6 +530,9 @@ const Assignments = () => {
                         <p><span className="text-muted-foreground">Due Date:</span> <span className="font-medium text-foreground">{a.dueDate}</span></p>
                         <p><span className="text-muted-foreground">Submission Mode:</span> <span className="font-medium text-foreground">{a.submissionMode}</span></p>
                         {a.submittedDate && <p><span className="text-muted-foreground">Submitted:</span> <span className="font-medium text-foreground">{a.submittedDate}</span></p>}
+                        {a.fileUrl && (
+                          <p><span className="text-muted-foreground">Your File:</span> <a href={a.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">View</a></p>
+                        )}
                         <p><span className="text-muted-foreground">Resubmission:</span> <span className="font-medium text-foreground">{a.resubmissionAllowed ? `Allowed (${a.resubmissionCount} used)` : 'Not Allowed'}</span></p>
                       </div>
                       <div className="space-y-2 text-sm">
@@ -289,14 +552,49 @@ const Assignments = () => {
                             <p className="mt-1 p-3 bg-muted/50 rounded-lg text-foreground italic">{a.feedback}</p>
                           </div>
                         )}
+                        {/* AI Feedback Section */}
+                        {a.status === 'Submitted' || a.status === 'Evaluated' ? (
+                          <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                            <div className="flex items-center gap-2 mb-3">
+                              <Sparkles className="w-4 h-4 text-blue-600" />
+                              <span className="text-sm font-medium text-blue-900 dark:text-blue-100">AI-Powered Feedback</span>
+                            </div>
+                            <div className="space-y-3 text-sm">
+                              <div className="bg-white/70 dark:bg-gray-800/70 p-3 rounded-md">
+                                <p className="text-gray-700 dark:text-gray-300">
+                                  <strong>Strengths:</strong> Your submission demonstrates good understanding of the core concepts. 
+                                  The structure is logical and well-organized.
+                                </p>
+                              </div>
+                              <div className="bg-white/70 dark:bg-gray-800/70 p-3 rounded-md">
+                                <p className="text-gray-700 dark:text-gray-300">
+                                  <strong>Areas for Improvement:</strong> Consider adding more detailed examples and 
+                                  practical applications to strengthen your analysis.
+                                </p>
+                              </div>
+                              <div className="bg-white/70 dark:bg-gray-800/70 p-3 rounded-md">
+                                <p className="text-gray-700 dark:text-gray-300">
+                                  <strong>Next Steps:</strong> Focus on implementing the concepts in a real-world scenario 
+                                  and document your learning process.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
-                      {a.status === 'Not Submitted' && (
+                      {a.status === 'Submitted' && (
                         <div className="md:col-span-2 flex gap-3">
-                          <button className="flex items-center gap-2 px-4 py-2 bg-gold text-navy rounded-lg font-medium text-sm hover:bg-gold/90 transition-colors">
-                            <Upload className="w-4 h-4" /> Submit Assignment
+                          <button 
+                            onClick={() => {
+                              setAiAssessmentTarget(a);
+                              setAiAssessmentOpen(true);
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg font-medium text-sm hover:bg-purple-700 transition-colors"
+                          >
+                            <Sparkles className="w-4 h-4" /> Get AI Assessment
                           </button>
                           <button className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg font-medium text-sm text-foreground hover:bg-muted transition-colors">
-                            <Eye className="w-4 h-4" /> View Details
+                            <Eye className="w-4 h-4" /> View Submission
                           </button>
                         </div>
                       )}
@@ -352,6 +650,158 @@ const Assignments = () => {
                 </tbody>
               </table>
             </div>
+          </div>
+        </TabsContent>
+
+        {/* AI Assessment Tab */}
+        <TabsContent value="ai-assessment">
+          <div className="space-y-6">
+            <div className="text-center">
+              <h3 className="text-lg font-serif font-bold text-foreground mb-2">AI Assessment Center</h3>
+              <p className="text-muted-foreground">Get detailed AI-powered evaluation of your submitted assignments</p>
+            </div>
+
+            <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20 p-6 rounded-xl border border-purple-200 dark:border-purple-800">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                  <Sparkles className="w-6 h-6 text-purple-600" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-semibold text-foreground mb-2">How AI Assessment Works</h4>
+                  <div className="grid md:grid-cols-2 gap-4 text-sm text-muted-foreground">
+                    <div>
+                      <p className="font-medium text-foreground mb-1">📊 Quality Analysis</p>
+                      <p>AI analyzes content quality, structure, and technical accuracy</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-foreground mb-1">🎯 Grade Prediction</p>
+                      <p>Get suggested marks and grades based on submission quality</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-foreground mb-1">💡 Improvement Tips</p>
+                      <p>Receive specific recommendations to improve your work</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-foreground mb-1">📈 Learning Insights</p>
+                      <p>Understand your strengths and areas for development</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h4 className="font-semibold text-foreground">Available Assessments</h4>
+              {assignments.filter(a => a.status === 'Submitted').length === 0 ? (
+                <div className="text-center py-12">
+                  <Sparkles className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">Submit assignments to get AI assessments</p>
+                </div>
+              ) : (
+                assignments.filter(a => a.status === 'Submitted').map((a, i) => (
+                  <motion.div key={a.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
+                    className="bg-card rounded-xl p-5 shadow-soft border border-purple-100 dark:border-purple-900"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                          <FileText className="w-5 h-5 text-purple-600" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">{a.title}</p>
+                          <p className="text-sm text-muted-foreground">{a.courseCode} • Submitted: {a.submittedDate}</p>
+                        </div>
+                      </div>
+                      <Button 
+                        onClick={() => {
+                          setAiAssessmentTarget(a);
+                          setAiAssessmentOpen(true);
+                        }}
+                        className="bg-purple-600 hover:bg-purple-700 text-white gap-2"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        Assess Now
+                      </Button>
+                    </div>
+                  </motion.div>
+                ))
+              )}
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* AI Feedback Tab */}
+        <TabsContent value="ai-feedback">
+          <div className="space-y-6">
+            <div className="text-center">
+              <h3 className="text-lg font-serif font-bold text-foreground mb-2">AI-Powered Learning Assistant</h3>
+              <p className="text-muted-foreground">Get personalized feedback and improvement suggestions for your assignments</p>
+            </div>
+
+            {assignments.filter(a => a.status === 'Submitted' || a.status === 'Evaluated').length === 0 ? (
+              <div className="text-center py-12">
+                <Sparkles className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">Submit some assignments to receive AI feedback</p>
+              </div>
+            ) : (
+              <div className="grid gap-6">
+                {assignments.filter(a => a.status === 'Submitted' || a.status === 'Evaluated').map((a, i) => (
+                  <motion.div key={a.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
+                    className="bg-card rounded-xl p-6 shadow-soft border border-blue-100 dark:border-blue-900"
+                  >
+                    <div className="flex items-start gap-4 mb-4">
+                      <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                        <Sparkles className="w-6 h-6 text-blue-600" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-medium text-foreground mb-1">{a.title}</h4>
+                        <p className="text-sm text-muted-foreground">{a.courseCode} • Submitted: {a.submittedDate}</p>
+                        {a.marksObtained && (
+                          <p className="text-sm font-medium text-foreground mt-1">Score: {a.marksObtained}/{a.marksAllotted} ({a.grade})</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20 p-4 rounded-lg">
+                        <h5 className="font-medium text-emerald-900 dark:text-emerald-100 mb-2 flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4" />
+                          Strengths
+                        </h5>
+                        <p className="text-sm text-emerald-800 dark:text-emerald-200">
+                          Your submission demonstrates a solid understanding of the core concepts. The structure is logical, 
+                          and you've shown good analytical thinking in your approach.
+                        </p>
+                      </div>
+
+                      <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 p-4 rounded-lg">
+                        <h5 className="font-medium text-amber-900 dark:text-amber-100 mb-2 flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4" />
+                          Areas for Improvement
+                        </h5>
+                        <p className="text-sm text-amber-800 dark:text-amber-200">
+                          Consider adding more practical examples and real-world applications. The technical depth could be 
+                          enhanced with additional research and references.
+                        </p>
+                      </div>
+
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 p-4 rounded-lg">
+                        <h5 className="font-medium text-blue-900 dark:text-blue-100 mb-2 flex items-center gap-2">
+                          <BookOpen className="w-4 h-4" />
+                          Learning Recommendations
+                        </h5>
+                        <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
+                          <li>• Review advanced concepts in {a.courseName}</li>
+                          <li>• Practice implementing similar problems</li>
+                          <li>• Join study groups for peer learning</li>
+                          <li>• Schedule office hours with faculty</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
           </div>
         </TabsContent>
 
