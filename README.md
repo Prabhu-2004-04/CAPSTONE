@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ﻿# 📚 Report Portal - Academic Management System
 
 A modern, feature-rich React application for managing academic workflows, assignments, evaluations, and student performance tracking.
@@ -212,3 +213,6 @@ GitHub: [@Prabhu-2004-04](https://github.com/Prabhu-2004-04)
 ---
 
 **Made with ❤️ for academic excellence**
+=======
+# CAPSTONE
+>>>>>>> 99c8fbf85b2e980d004ffab34d5991692ee5bcd6
